@@ -1,7 +1,6 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-#include "crypto.h"
 #include "http.h"
 #include "minecraft.h"
 

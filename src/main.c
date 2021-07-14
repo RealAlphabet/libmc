@@ -6,179 +6,6 @@
 #include "minecraft.h"
 #include "socket.h"
 #include "http.h"
-#include "miniz.h"
-
-
-///////////////////////////////////
-//  CONFIG
-///////////////////////////////////
-
-
-#define __MC_TOKEN      "YOUR_TOKEN"
-#define __MC_UUID       "YOUR_SESSION_ID"
-
-
-///////////////////////////////////
-//  HANDLER
-///////////////////////////////////
-
-
-typedef void (*decoder_t)(connection_t *connection, buffer_t *packet);
-
-void on_packet_decrypt(connection_t *connection, buffer_t *packet, packet_handler_t *next);
-void on_packet_decompress(connection_t *connection, buffer_t *packet, packet_handler_t *next);
-void on_login_packet_raw(connection_t *connection, buffer_t *packet, packet_handler_t *next);
-void on_packet_otoak(connection_t *connection, buffer_t *packet, packet_handler_t *next);
-
-void packet_on_disconnect(connection_t *connection, buffer_t *packet)
-{
-
-}
-
-void packet_on_encryption_request(connection_t *connection, buffer_t *packet)
-{
-    char server_id[20];
-    char pub_key[512];
-    char verify_token[16];
-
-    // Read packet.
-    buffer_read_string(packet , server_id    , 20);
-    buffer_read_array(packet  , pub_key      , 512);
-    buffer_read_array(packet  , verify_token , 16);
-
-    // Init crypto.
-    connection->crypto = malloc(sizeof(crypto_context_t));
-    crypto_init(connection->crypto, pub_key, 162);
-
-    // Login to Mojang.
-    mojang_auth_login(&(mojang_session_t){
-        __MC_TOKEN,
-        __MC_UUID,
-        connection->crypto->iv,
-        server_id,
-        strlen(server_id),
-        pub_key,
-        162
-    });
-
-    // Send encryption response.
-    packet_send_encryption_response(connection->fd, connection->crypto, verify_token, 4);
-
-    // Set network handler.
-    connection->handler.on_read         = on_packet_decrypt;
-    connection->handler.next            = calloc(1, sizeof(packet_handler_t));
-    connection->handler.next->on_read   = on_login_packet_raw;
-}
-
-void on_packet_test(connection_t *connection, buffer_t *packet, packet_handler_t *next)
-{
-    int id = buffer_read_varint(packet);
-
-    printf("%d\n", id);
-}
-
-void packet_on_login_success(connection_t *connection, buffer_t *packet)
-{
-    char uuid[64];
-    char username[32];
-
-    // Read packet.
-    buffer_read_string(packet, uuid     , 64);
-    buffer_read_string(packet, username , 32);
-
-    // Set packet handler.
-    connection->handler.next->next->on_read = on_packet_test;
-
-    printf("ONELA NOUS ONELA !\n");
-    printf("%s\n", uuid);
-    printf("%s\n", username);
-}
-
-void packet_on_set_compression(connection_t *connection, buffer_t *packet)
-{
-    packet_handler_t *save = connection->handler.next;
-
-    // Read packet.
-    connection->threshold = buffer_read_varint(packet);
-
-    // Save current handler and create a new.
-    if (connection->threshold >= 0) {
-        connection->handler.next            = calloc(1, sizeof(packet_handler_t));
-        connection->handler.next->on_read   = on_packet_decompress;
-        connection->handler.next->next      = save;
-
-        // test
-        connection->handler.next->next->on_read = on_packet_otoak;
-    }
-}
-
-const decoder_t decoders_login[] = {
-    packet_on_disconnect,
-    packet_on_encryption_request,
-    packet_on_login_success,
-    packet_on_set_compression
-};
-
-void on_packet_decrypt(connection_t *connection, buffer_t *packet, packet_handler_t *next)
-{
-    // Decrypt packet.
-    crypto_aes_decrypt(connection->crypto, packet->data, packet->data, packet->capacity);
-
-    // Pass to next handler.
-    next->on_read(connection, packet, next->next);
-}
-
-void on_packet_otoak(connection_t *connection, buffer_t *packet, packet_handler_t *next)
-{
-    int id = buffer_read_varint(packet);
-
-    // Decode and handle packet.
-    if (id >= 0 && id <= 3)
-        decoders_login[id](connection, packet);
-}
-
-void on_packet_decompress(connection_t *connection, buffer_t *packet, packet_handler_t *next)
-{
-    char        buf[8192 * 4] = { 0 };
-    buffer_t    decompressed = { buf, 8192 * 4, 0 };
-    size_t      clen;
-    size_t      ulen;
-    size_t      len;
-
-    // Decode all packets.
-    while (packet->pos < packet->capacity) {
-
-        // Read packet data length.
-        clen = buffer_read_varint(packet);   // Length of Data Length + Compressed data length
-        ulen = buffer_read_varint(packet);   // Length of Uncompressed Data
-
-        // Skip decompression if the packet is uncompressed.
-        if (ulen == 0) {
-            next->on_read(connection, packet, next->next);
-            return;
-        }
-
-        // Decompress packet.
-        uncompress(buf, &decompressed.capacity, &packet->data[packet->pos], clen);
-
-        // Set packet position.
-        packet->pos         += (clen - buffer_size_varint(ulen));
-        decompressed.pos    = 0;
-
-        // Pass to next handler.
-        // next->on_read(connection, &decompressed, next->next);
-    }
-}
-
-void on_login_packet_raw(connection_t *connection, buffer_t *packet, packet_handler_t *next)
-{
-    size_t length   = buffer_read_varint(packet);
-    int id          = buffer_read_varint(packet);
-
-    // Decode and handle packet.
-    if (id >= 0 && id <= 3)
-        decoders_login[id](connection, packet);
-}
 
 
 ///////////////////////////////////
@@ -188,8 +15,8 @@ void on_login_packet_raw(connection_t *connection, buffer_t *packet, packet_hand
 
 int minecraft_connect(const char *host, uint16_t port)
 {
-    char            buf[8192];
-    buffer_t        packet      = { buf, 8192, 0 };
+    static char     buf[32768];
+    buffer_t        packet      = { buf, 32768, 0 };
     connection_t    connection  = { 0 };
     size_t          len;
 
@@ -198,7 +25,7 @@ int minecraft_connect(const char *host, uint16_t port)
         return (-1);
 
     // Set network pipe handler.
-    connection.handler.on_read = on_login_packet_raw;
+    pipeline_add_after(&connection.pipeline, 0, pipeline_create(0, packet_handler_raw, NULL));
 
     // Send Handshake packet.
     packet.pos = 4;
@@ -216,14 +43,14 @@ int minecraft_connect(const char *host, uint16_t port)
     send_packet(connection.fd, &packet);
 
     // Read and handle packets.
-    while ((len = read(connection.fd, buf, 8192)) > 0) {
+    while ((len = read(connection.fd, buf, 32768)) > 0) {
 
         // Reset position and set read capacity.
         packet.pos      = 0;
         packet.capacity = len;
 
         // Decode and handle packet.
-        connection.handler.on_read(&connection, &packet, connection.handler.next);
+        connection.pipeline->on_read(&connection, &packet, connection.pipeline->next);
     }
 
     // Free crypto context.
