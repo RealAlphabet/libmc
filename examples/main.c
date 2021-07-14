@@ -22,7 +22,7 @@ void on_packet_receive(libmc_t *mc, buffer_t *packet)
 int main(int argc, char **argv)
 {
     libmc_t mc;
-    libmc_session_t session  = { "token", "uuid" };
+    libmc_session_t session = { "token", "uuid" };
 
     // Initialize libmc.
     libmc_init();

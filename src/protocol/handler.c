@@ -5,12 +5,17 @@
 
 
 ///////////////////////////////////
-//  CONFIG
+//  DECODERS
 ///////////////////////////////////
 
 
-#define __MC_TOKEN      "YOUR_TOKEN"
-#define __MC_UUID       "YOUR_UUID"
+const decoder_t DECODERS[] = {
+    on_packet_disconnect,
+    on_packet_encryption_request,
+    on_packet_login_success,
+    on_packet_set_compression,
+    NULL
+};
 
 
 ///////////////////////////////////
@@ -18,14 +23,7 @@
 ///////////////////////////////////
 
 
-void on_packet_test(connection_t *connection, buffer_t *packet, packet_handler_t *next)
-{
-    int id = buffer_read_varint(packet);
-
-    printf("\tID: %d\n", id);
-}
-
-void on_packet_decrypt(connection_t *connection, buffer_t *packet, packet_handler_t *next)
+void handler_decrypt(connection_t *connection, buffer_t *packet, pipeline_entry_t *next)
 {
     // Decrypt packet.
     crypto_aes_decrypt(connection->crypto, packet->data, packet->data, packet->capacity);
@@ -34,17 +32,7 @@ void on_packet_decrypt(connection_t *connection, buffer_t *packet, packet_handle
     next->on_read(connection, packet, next->next);
 }
 
-void on_packet_otoak(connection_t *connection, buffer_t *packet, packet_handler_t *next)
-{
-    int id = buffer_read_varint(packet);
-
-    printf("OTOAK: %d\n", id);
-
-    // Decode and handle packet.
-    decoders_login[id](connection, packet);
-}
-
-void on_packet_decompress(connection_t *connection, buffer_t *packet, packet_handler_t *next)
+void handler_decompress(connection_t *connection, buffer_t *packet, pipeline_entry_t *next)
 {
     static char buf[131072] = { 0 };
     buffer_t decompressed   = { buf, 131072, 0 };
@@ -82,20 +70,15 @@ void on_packet_decompress(connection_t *connection, buffer_t *packet, packet_han
         // Pass to next handler.
         // next->on_read(connection, &decompressed, next->next);
     }
-
-    printf("\n\nEZ\n\n");
 }
 
-void on_login_packet_raw(connection_t *connection, buffer_t *packet, packet_handler_t *next)
+void handler_raw(connection_t *connection, buffer_t *packet, pipeline_entry_t *next)
 {
     size_t length   = buffer_read_varint(packet);
     int id          = buffer_read_varint(packet);
 
+    printf("%ld %d\n", length, id);
+
     // Decode and handle packet.
-    if (id >= 0 && id <= 3)
-        decoders_login[id](connection, packet);
-
-    printf("RAW: %ld %ld\n", packet->capacity, packet->pos);
+    DECODERS[id](connection, packet);
 }
-
-

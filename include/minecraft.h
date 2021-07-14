@@ -9,6 +9,13 @@
 ///////////////////////////////////
 
 
+enum
+{
+    PIPE_DECRYPT,
+    PIPE_DECOMPRESS,
+    PIPE_RAW
+};
+
 typedef struct
 {
     int                 fd;
@@ -37,32 +44,25 @@ typedef struct
 typedef void (*decoder_t)(connection_t *connection, buffer_t *packet);
 
 //  handler.c
-void on_packet_decrypt(connection_t *connection, buffer_t *packet, packet_handler_t *next);
-void on_packet_decompress(connection_t *connection, buffer_t *packet, packet_handler_t *next);
-void on_login_packet_raw(connection_t *connection, buffer_t *packet, packet_handler_t *next);
-void on_packet_otoak(connection_t *connection, buffer_t *packet, packet_handler_t *next);
+void handler_decrypt(connection_t *connection, buffer_t *packet, pipeline_entry_t *next);
+void handler_decompress(connection_t *connection, buffer_t *packet, pipeline_entry_t *next);
+void handler_raw(connection_t *connection, buffer_t *packet, pipeline_entry_t *next);
 
-//  handler.c
-void packet_on_disconnect(connection_t *connection, buffer_t *packet);
-void packet_on_encryption_request(connection_t *connection, buffer_t *packet);
-void packet_on_login_success(connection_t *connection, buffer_t *packet);
-void packet_on_set_compression(connection_t *connection, buffer_t *packet);
+//  login.c
+void on_packet_disconnect(connection_t *connection, buffer_t *packet);
+void on_packet_encryption_request(connection_t *connection, buffer_t *packet);
+void on_packet_login_success(connection_t *connection, buffer_t *packet);
+void on_packet_set_compression(connection_t *connection, buffer_t *packet);
 
 
 ///////////////////////////////////
-//  PACKET
+//  MINECRAFT
 ///////////////////////////////////
 
 
 //  minecraft.c
 void send_packet(int fd, buffer_t *buf);
 
-
-///////////////////////////////////
-//  ENCRYPTION
-///////////////////////////////////
-
-
-//  minecraft.c
+//  mojang.c
 void mojang_auth_login(mojang_session_t *session);
 void packet_send_encryption_response(int fd, crypto_context_t *context, const char *token, size_t len);

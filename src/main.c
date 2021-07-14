@@ -25,7 +25,7 @@ int minecraft_connect(const char *host, uint16_t port)
         return (-1);
 
     // Set network pipe handler.
-    pipeline_add_after(&connection.pipeline, 0, pipeline_create(0, packet_handler_raw, NULL));
+    connection.pipeline = pipeline_create(PIPE_RAW, (packet_handler_t)handler_raw, NULL);
 
     // Send Handshake packet.
     packet.pos = 4;
@@ -58,6 +58,9 @@ int minecraft_connect(const char *host, uint16_t port)
         crypto_free(connection.crypto);
         free(connection.crypto);
     }
+
+    // Free pipeline.
+    pipeline_free(&connection.pipeline);
 
     // Close connection.
     close(connection.fd);

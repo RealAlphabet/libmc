@@ -1,16 +1,37 @@
+#include <stdlib.h>
+#include <string.h>
+
+#include "minecraft.h"
+
+
+///////////////////////////////////
+//  CONFIG
+///////////////////////////////////
+
+
+#define __MC_TOKEN      "YOUR_TOKEN"
+#define __MC_UUID       "YOUR_UUID"
+
 
 ///////////////////////////////////
 //  LOGIN
 ///////////////////////////////////
 
 
-void packet_on_disconnect(connection_t *connection, buffer_t *packet)
+void on_packet_disconnect(connection_t *connection, buffer_t *packet)
 {
-    fprintf(stderr, "DISCONNECTING.\n");
+    char message[2048];
+
+    // Read chat message.
+    buffer_read_string(packet, message, 2048);
+
+    // Print disconnect message.
+    printf("DISCONNECTING.\n");
+    printf("%s\n", message);
     exit(0);
 }
 
-void packet_on_encryption_request(connection_t *connection, buffer_t *packet)
+void on_packet_encryption_request(connection_t *connection, buffer_t *packet)
 {
     char server_id[20];
     char pub_key[512];
@@ -21,8 +42,10 @@ void packet_on_encryption_request(connection_t *connection, buffer_t *packet)
     buffer_read_array(packet  , pub_key      , 512);
     buffer_read_array(packet  , verify_token , 16);
 
-    // Init crypto.
+    // Allocate crypto.
     connection->crypto = malloc(sizeof(crypto_context_t));
+
+    // Init crypto.
     crypto_init(connection->crypto, pub_key, 162);
 
     // Login to Mojang.
@@ -40,12 +63,10 @@ void packet_on_encryption_request(connection_t *connection, buffer_t *packet)
     packet_send_encryption_response(connection->fd, connection->crypto, verify_token, 4);
 
     // Set network handler.
-    connection->handler.on_read         = on_packet_decrypt;
-    connection->handler.next            = calloc(1, sizeof(packet_handler_t));
-    connection->handler.next->on_read   = on_packet_raw;
+    pipeline_add_before(&connection->pipeline, PIPE_RAW, pipeline_create(PIPE_DECRYPT, (packet_handler_t)handler_decrypt, NULL));
 }
 
-void packet_on_login_success(connection_t *connection, buffer_t *packet)
+void on_packet_login_success(connection_t *connection, buffer_t *packet)
 {
     char uuid[64];
     char username[32];
@@ -54,31 +75,21 @@ void packet_on_login_success(connection_t *connection, buffer_t *packet)
     buffer_read_string(packet, uuid     , 64);
     buffer_read_string(packet, username , 32);
 
-    // Set packet handler.
-    connection->handler.next->next->on_read = on_packet_test;
-
     // Write a log message.
     printf("\n");
     printf("Connection successful !\n");
     printf("\tUUID:\t\t%s\n", uuid);
     printf("\tUsername:\t%s\n", username);
     printf("\n");
+    exit(0);
 }
 
-void packet_on_set_compression(connection_t *connection, buffer_t *packet)
+void on_packet_set_compression(connection_t *connection, buffer_t *packet)
 {
-    packet_handler_t *save = connection->handler.next;
-
     // Read packet.
     connection->threshold = buffer_read_varint(packet);
 
-    // Save current handler and create a new.
-    if (connection->threshold >= 0) {
-        connection->handler.next            = calloc(1, sizeof(packet_handler_t));
-        connection->handler.next->on_read   = on_packet_decompress;
-        connection->handler.next->next      = save;
-
-        // test
-        connection->handler.next->next->on_read = on_packet_otoak;
-    }
+    // Add the decompress handler to the pipeline.
+    if (connection->threshold >= 0)
+        pipeline_add_before(&connection->pipeline, PIPE_RAW, pipeline_create(PIPE_DECOMPRESS, (packet_handler_t)handler_decompress, NULL));
 }

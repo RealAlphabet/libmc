@@ -19,7 +19,8 @@ int socket_get_host_addr(const char *host, struct sockaddr_in *addr)
     hints.ai_socktype   = SOCK_STREAM;      // Datagram socket.
 
     // Get address info.
-    getaddrinfo(host, NULL, &hints, &res);
+    if (getaddrinfo(host, NULL, &hints, &res))
+        return (-1);
 
     // Copy first address.
     memcpy(addr, res->ai_addr, res->ai_addrlen);

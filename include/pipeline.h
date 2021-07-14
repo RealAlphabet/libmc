@@ -28,7 +28,7 @@ struct pipeline_entry_t
 ///////////////////////////////////
 
 
-pipeline_entry_t *pipeline_create(int id, packet_handler_t *on_read, packet_handler_t *on_write);
+pipeline_entry_t *pipeline_create(int id, packet_handler_t on_read, packet_handler_t on_write);
 void pipeline_free(pipeline_entry_t **start);
 
 
