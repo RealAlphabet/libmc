@@ -65,19 +65,3 @@ void http_post(const char *url, char *data, http_response_t *response)
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 }
-
-
-///////////////////////////////////
-//  INSTANCE
-///////////////////////////////////
-
-
-void http_setup(void)
-{
-    curl_global_init(CURL_GLOBAL_ALL);
-}
-
-void http_destroy(void)
-{
-    curl_global_cleanup();
-}

@@ -9,22 +9,22 @@
 ///////////////////////////////////
 
 
-inline uint8_t buffer_read_u8(buffer_t *buf)
+uint8_t buffer_read_u8(buffer_t *buf)
 {
-    return (buf->data[buf->pos++]);
+    return (buf->data[buf->posr++]);
 }
 
-inline uint16_t buffer_read_u16(buffer_t *buf)
+uint16_t buffer_read_u16(buffer_t *buf)
 {
     return (((uint16_t)buffer_read_u8(buf) << 8) | buffer_read_u8(buf));
 }
 
-inline uint32_t buffer_read_u32(buffer_t *buf)
+uint32_t buffer_read_u32(buffer_t *buf)
 {
     return (((uint32_t)buffer_read_u16(buf) << 16) | buffer_read_u16(buf));
 }
 
-inline uint64_t buffer_read_u64(buffer_t *buf)
+uint64_t buffer_read_u64(buffer_t *buf)
 {
     return (((uint64_t)buffer_read_u32(buf) << 32) | buffer_read_u32(buf));
 }
@@ -33,12 +33,12 @@ float buffer_read_float(buffer_t *buf)
 {
     uint8_t data[4];
 
-    // Decode Big Endian.
-    data[3] = buf->data[buf->pos + 0];
-    data[2] = buf->data[buf->pos + 1];
-    data[1] = buf->data[buf->pos + 2];
-    data[0] = buf->data[buf->pos + 3];
-    buf->pos += sizeof(float);
+    // Decode to Little Endian.
+    data[3] = buf->data[buf->posr + 0];
+    data[2] = buf->data[buf->posr + 1];
+    data[1] = buf->data[buf->posr + 2];
+    data[0] = buf->data[buf->posr + 3];
+    buf->posr += sizeof(float);
 
     return *((float*)data);
 }
@@ -47,16 +47,16 @@ double buffer_read_double(buffer_t *buf)
 {
     uint8_t data[8];
 
-    // Decode Little Endian.
-    data[7] = buf->data[buf->pos + 0];
-    data[6] = buf->data[buf->pos + 1];
-    data[5] = buf->data[buf->pos + 2];
-    data[4] = buf->data[buf->pos + 3];
-    data[3] = buf->data[buf->pos + 4];
-    data[2] = buf->data[buf->pos + 5];
-    data[1] = buf->data[buf->pos + 6];
-    data[0] = buf->data[buf->pos + 7];
-    buf->pos += sizeof(double);
+    // Decode to Little Endian.
+    data[7] = buf->data[buf->posr + 0];
+    data[6] = buf->data[buf->posr + 1];
+    data[5] = buf->data[buf->posr + 2];
+    data[4] = buf->data[buf->posr + 3];
+    data[3] = buf->data[buf->posr + 4];
+    data[2] = buf->data[buf->posr + 5];
+    data[1] = buf->data[buf->posr + 6];
+    data[0] = buf->data[buf->posr + 7];
+    buf->posr += sizeof(double);
 
     return *((double*)data);
 }
@@ -65,10 +65,10 @@ char *buffer_read_string(buffer_t *buf, char *dst, size_t max)
 {
     size_t i        = 0;
     size_t length   = buffer_read_varint(buf);
-    char *storage   = &buf->data[buf->pos];
+    char *storage   = &buf->data[buf->posr];
 
     // Check for string length.
-    if (length > max)
+    if (length >= max)
         return (NULL);
 
     // Allocate memory if destination is NULL.
@@ -82,26 +82,26 @@ char *buffer_read_string(buffer_t *buf, char *dst, size_t max)
     }
     dst[i] = 0;
 
-    // Set new position.
-    buf->pos += length;
+    // Set new posrition.
+    buf->posr += length;
     return (dst);
 }
 
 char *buffer_read_array(buffer_t *buf, char *dst, size_t max)
 {
     size_t length = buffer_read_varint(buf);
-    char *storage = &buf->data[buf->pos];
+    char *storage = &buf->data[buf->posr];
 
     // Allocate memory if destination is NULL.
     if (dst == NULL)
-        dst = malloc(sizeof(char) * (length + 1));
+        dst = malloc(sizeof(char) * length);
 
     // Read array.
     for (size_t i = 0; i < length; i++)
         dst[i] = storage[i];
 
-    // Set new position.
-    buf->pos += length;
+    // Set new posrition.
+    buf->posr += length;
     return (dst);
 }
 
@@ -116,7 +116,7 @@ int32_t buffer_read_varint(buffer_t *buf)
         result  |= (byte & 0b01111111) << (7 * num_read++);
 
         // @TODO : Exceptions
-        if (num_read > 5)
+        if (num_read > 4)
             return (-1);
 
     } while (byte & 0b10000000);
@@ -135,7 +135,7 @@ int64_t buffer_read_varlong(buffer_t *buf)
         result |= (byte & 0b01111111) << (7 * num_read++);
 
         // @TODO : Exceptions
-        if (num_read > 10)
+        if (num_read > 8)
             return (-1);
 
     } while (byte & 0b10000000);
@@ -149,24 +149,24 @@ int64_t buffer_read_varlong(buffer_t *buf)
 ///////////////////////////////////
 
 
-inline void buffer_write_u8(buffer_t *buf, uint8_t i)
+void buffer_write_u8(buffer_t *buf, uint8_t i)
 {
-    buf->data[buf->pos++] = i;
+    buf->data[buf->posw++] = i;
 }
 
-inline void buffer_write_u16(buffer_t *buf, uint16_t i)
+void buffer_write_u16(buffer_t *buf, uint16_t i)
 {
     buffer_write_u8(buf, i >> 8);
     buffer_write_u8(buf, i);
 }
 
-inline void buffer_write_u32(buffer_t *buf, uint32_t i)
+void buffer_write_u32(buffer_t *buf, uint32_t i)
 {
     buffer_write_u16(buf, i >> 16);
     buffer_write_u16(buf, i);
 }
 
-inline void buffer_write_u64(buffer_t *buf, uint64_t i)
+void buffer_write_u64(buffer_t *buf, uint64_t i)
 {
     buffer_write_u32(buf, i >> 32);
     buffer_write_u32(buf, i);
@@ -188,7 +188,7 @@ void buffer_write_double(buffer_t *buf, double i)
     buffer_write_u64(buf, bits);
 }
 
-inline void buffer_write_string(buffer_t *buf, const char *src, size_t len)
+void buffer_write_string(buffer_t *buf, const char *src, size_t len)
 {
     char *storage;
 
@@ -196,14 +196,14 @@ inline void buffer_write_string(buffer_t *buf, const char *src, size_t len)
     buffer_write_varint(buf, len);
 
     // Get current buf position.
-    storage = &buf->data[buf->pos];
+    storage = &buf->data[buf->posw];
 
     // Write string.
     for (size_t i = 0; i < len; i++)
         storage[i] = src[i];
 
     // Set new position.
-    buf->pos += len;
+    buf->posw += len;
 }
 
 void buffer_write_array(buffer_t *buf, const char *src, size_t len)
@@ -214,14 +214,14 @@ void buffer_write_array(buffer_t *buf, const char *src, size_t len)
     buffer_write_varint(buf, len);
 
     // Get current buf position.
-    storage = &buf->data[buf->pos];
+    storage = &buf->data[buf->posw];
 
     // Write array.
     for (size_t i = 0; i < len; i++)
         storage[i] = src[i];
 
     // Set new position.
-    buf->pos += len;
+    buf->posw += len;
 }
 
 void buffer_write_varint(buffer_t *buf, uint32_t i)

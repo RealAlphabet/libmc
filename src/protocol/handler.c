@@ -5,80 +5,124 @@
 
 
 ///////////////////////////////////
-//  DECODERS
-///////////////////////////////////
-
-
-const decoder_t DECODERS[] = {
-    on_packet_disconnect,
-    on_packet_encryption_request,
-    on_packet_login_success,
-    on_packet_set_compression,
-    NULL
-};
-
-
-///////////////////////////////////
 //  HANDLER
 ///////////////////////////////////
 
 
 void handler_decrypt(connection_t *connection, buffer_t *packet, pipeline_entry_t *next)
 {
-    // Decrypt packet.
-    crypto_aes_decrypt(connection->crypto, packet->data, packet->data, packet->capacity);
+    // Continue decryption of the stream.
+    // Previous bytes are already decrypted.
+    crypto_aes_decrypt(
+        connection->crypto,
+        &packet->data[packet->posw],
+        &packet->data[packet->posw],
+        (packet->size - packet->posw)
+    );
 
-    // Pass to next handler.
+    // Pass to the next handler.
     next->on_read(connection, packet, next->next);
 }
 
 void handler_decompress(connection_t *connection, buffer_t *packet, pipeline_entry_t *next)
 {
-    static char buf[131072] = { 0 };
-    buffer_t decompressed   = { buf, 131072, 0 };
     size_t clen;
     size_t ulen;
-    size_t len;
 
-    printf("\n\nSTART\n\n");
+    // Decode packets.
+    while (packet->posr < packet->size) {
 
-    // Decode all packets.
-    while (packet->pos < packet->capacity) {
+        // Save packet position.
+        packet->markr = packet->posr;
 
-        // Read packet data length.
-        clen = buffer_read_varint(packet);   // Length of Data Length + Compressed data length
-        ulen = buffer_read_varint(packet);   // Length of Uncompressed Data
+        // Read compressed and uncompressed data length.
+        //
+        // Packet Length    : Length of Data Length + Compressed length of (Packet ID + Data).
+        // Data Length      : Length of Uncompressed Data (Packet ID + Data) or 0.
+        // Data             : Compressed Data (Packet ID + Data).
+        //
+        clen = buffer_read_varint(packet);
+        ulen = buffer_read_varint(packet);
+        clen -= buffer_size_varint(ulen);
 
-        // Skip decompression if the packet is uncompressed.
-        printf("%ld %ld %ld\n", packet->capacity, clen, ulen);
-
-        if (ulen == 0) {
-            next->on_read(connection, packet, next->next);
+        if ((packet->posr + clen) > packet->size) {
+            // CAS OU LE PACKET MANQUE DES DONNEES.
+            exit(84);
             return;
         }
 
-        // Set decompress packet.
-        decompressed.pos        = 0;
-        decompressed.capacity   = 131072;
+        // Skip decompression if the packet is uncompressed.
+        if (ulen == 0) {
 
-        // Decompress packet.
-        uncompress(buf, &decompressed.capacity, &packet->data[packet->pos], clen);
+            // Pass to next handler.
+            handler_ak(connection, packet);
 
+        } else {
+            buffer_t pkt = { 0 };
+
+            // Allocate a buffer for the uncompressed packet.
+            pkt.data = malloc(sizeof(char) * ulen);
+            pkt.size = ulen;
+
+            // Uncompress packet.
+            uncompress(pkt.data, &pkt.size, &packet->data[packet->posr], clen);
+
+            // Pass to next handler.
+            handler_ak(connection, &pkt);
+
+            // Free allocated data.
+            free(pkt.data);
+        }
+        
         // Set packet position.
-        packet->pos         += (clen - buffer_size_varint(ulen));
-
-        // Pass to next handler.
-        // next->on_read(connection, &decompressed, next->next);
+        packet->posr = (packet->markr + clen);
     }
 }
 
 void handler_raw(connection_t *connection, buffer_t *packet, pipeline_entry_t *next)
 {
-    size_t length   = buffer_read_varint(packet);
-    int id          = buffer_read_varint(packet);
+    size_t len;
+    size_t remaining;
 
-    printf("%ld %d\n", length, id);
+    // Decode packets.
+    while (packet->posr < packet->size) {
 
-    // Decode and handle packet.
-    DECODERS[id](connection, packet);
+        // Save packet position.
+        packet->markr = packet->posr;
+
+        // Read "Packet Length".
+        len = buffer_read_varint(packet);
+
+        // Check if the packet is incomplete.
+        remaining = (packet->size - packet->posr);
+
+        if (remaining < len) {
+
+            // Include "Packet Length" length.
+            remaining += buffer_size_varint(len);
+
+            // Copy remaining bytes to the beginning of the packet.
+            memcpy(packet->data, &packet->data[packet->markr], remaining);
+
+            // Reset read position.
+            // Set write position to the end of the remaining bytes.
+            // Set size to fit remaining bytes.
+            packet->posr = 0;
+            packet->posw = remaining;
+            packet->size = remaining;
+
+            // Return and wait for the next chunk of bytes.
+            return;
+
+        } else {
+            // Save packet position.
+            packet->markr = packet->posr;
+
+            // Decode and handle packet.
+            next->on_read(connection, packet, next->next);
+
+            // Restore packet position.
+            packet->posr = (packet->markr + len);
+        }
+    }
 }

@@ -11,9 +11,12 @@
 
 typedef struct
 {
-    char *data;
-    size_t capacity;
-    size_t pos;
+    char    *data;
+    size_t  size;
+    size_t  posr;
+    size_t  posw;
+    size_t  markr;
+    size_t  markw;
 } buffer_t;
 
 

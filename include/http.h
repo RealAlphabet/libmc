@@ -19,12 +19,3 @@ typedef struct {
 
 
 void http_post(const char *url, char *data, http_response_t *response);
-
-
-///////////////////////////////////
-//  INSTANCE
-///////////////////////////////////
-
-
-void http_setup(void);
-void http_destroy(void);

@@ -33,10 +33,10 @@ int main(int argc, char **argv)
         libmc_connect(&mc, "mc.hypixel.net", 25565, 47 /* protocol version */);
 
         // Wait for libmc to handle authentification.
-        while (libmc_handle_login(mc, session));
+        while (libmc_read(mc));
 
         // Authentification is done, we are in PLAY state.
-        while (libmc_handle_play(mc, on_packet_receive));
+        while (libmc_handle_play(mc));
 
         // Close socket and free all associated ressources.
         libmc_close(&mc);

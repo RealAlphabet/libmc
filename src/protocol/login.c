@@ -5,15 +5,6 @@
 
 
 ///////////////////////////////////
-//  CONFIG
-///////////////////////////////////
-
-
-#define __MC_TOKEN      "YOUR_TOKEN"
-#define __MC_UUID       "YOUR_UUID"
-
-
-///////////////////////////////////
 //  LOGIN
 ///////////////////////////////////
 
@@ -81,7 +72,6 @@ void on_packet_login_success(connection_t *connection, buffer_t *packet)
     printf("\tUUID:\t\t%s\n", uuid);
     printf("\tUsername:\t%s\n", username);
     printf("\n");
-    exit(0);
 }
 
 void on_packet_set_compression(connection_t *connection, buffer_t *packet)
